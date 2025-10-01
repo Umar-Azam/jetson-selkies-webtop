@@ -1,0 +1,46 @@
+version: '3.8'
+
+# This compose file defines a single service (webtop) built from the
+# custom image defined in the accompanying Dockerfile.  It binds the
+# necessary ports for Webtop’s web interface and SSH, and mounts
+# persistent host directories so that user state and configuration
+# survive container recreation.  GPU resources are reserved via the
+# Docker Compose device reservation mechanism recommended by
+# LinuxServer.io【692246732032093†L591-L603】.
+
+services:
+  webtop:
+    build: .
+    image: webtop-persistent:latest
+    container_name: webtop
+    environment:
+      # Set the UID/GID to match your host user.  On a Jetson system
+      # these will typically be 1000:1000 but you can confirm with `id`.
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Toronto
+      # Optionally set a default password for the abc user.  If
+      # undefined, only public key authentication will be available.
+      - SSH_DEFAULT_PASSWORD=changeme
+    ports:
+      # Webtop UI over HTTP (KasmVNC)
+      - "3000:3000"
+      # Webtop UI over HTTPS
+      - "3001:3001"
+      # SSH into the container.  Change the host port if 22 is already in use.
+      - "2222:22"
+    volumes:
+      # Persist the webtop configuration and user home across container
+      # recreations.  Adjust the host paths to suit your Jetson system.
+      - /opt/webtop/config:/config
+      - /opt/webtop/home:/home/abc
+    shm_size: "1gb"
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [compute, video, graphics, utility]
+# End of docker-compose

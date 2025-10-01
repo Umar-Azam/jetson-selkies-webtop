@@ -1,0 +1,11 @@
+#!/usr/bin/with-contenv bash
+
+# This service file is executed by s6 to start the OpenSSH daemon after
+# all built‑in services have been initialised【382432676714424†L399-L405】.  The
+# daemon runs in the foreground (`-D`) so that s6 can supervise it.  We
+# override a few options for safety: root login is disabled and
+# password authentication is enabled only if a password is set for the
+# `abc` user.  Public key authentication remains available via
+# `/home/abc/.ssh/authorized_keys` when persisted in the home volume.
+
+exec /usr/sbin/sshd -D -o PermitRootLogin=no -o PasswordAuthentication=yes
