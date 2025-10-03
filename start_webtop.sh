@@ -1,25 +1,51 @@
 #!/usr/bin/env bash
-
 # start_webtop.sh
-#
-# This convenience script builds the custom webtop image (if needed) and
-# starts the container using the same settings as the docker-compose file.
-# It can be run on the Jetson Orin Nano host.  After the container
-# starts, the Webtop desktop will be available at http://<device_ip>:3000
-# and https://<device_ip>:3001.  An SSH server will listen on
-# port 2222 for shell access.  GPU resources will be enabled via the
-# default NVIDIA runtime (configure with nvidia‑ctk as shown in the
-# documentation【692246732032093†L585-L603】).
+# Build image only if no container named 'webtop' exists yet.
+# If running: print status and exit. If stopped: start it. If missing: build (if needed) and run.
 
-set -e
+set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-echo "[start_webtop] Building the custom webtop image..."
-docker build -t webtop-persistent:latest "$SCRIPT_DIR"
+IMAGE_NAME="webtop-persistent:latest"
+CONTAINER_NAME="webtop"
 
-echo "[start_webtop] Starting the webtop container..."
+have_running_container() {
+  docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"
+}
+
+have_any_container() {
+  docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"
+}
+
+have_image() {
+  docker image inspect "${IMAGE_NAME}" >/dev/null 2>&1
+}
+
+echo "[start_webtop] Checking container state..."
+
+if have_running_container; then
+  echo "[start_webtop] '${CONTAINER_NAME}' is already RUNNING. Nothing to do."
+  exit 0
+fi
+
+if have_any_container; then
+  echo "[start_webtop] Found existing '${CONTAINER_NAME}' (stopped). Starting it..."
+  docker start "${CONTAINER_NAME}"
+  echo "[start_webtop] '${CONTAINER_NAME}' started."
+  exit 0
+fi
+
+# No container by this name yet → build image only if needed, then run
+if have_image; then
+  echo "[start_webtop] Using existing image ${IMAGE_NAME} (no build needed)."
+else
+  echo "[start_webtop] No image found. Building ${IMAGE_NAME}..."
+  docker build -t "${IMAGE_NAME}" "${SCRIPT_DIR}"
+fi
+
+echo "[start_webtop] Running new container '${CONTAINER_NAME}'..."
 docker run -d \
-  --name webtop \
+  --name "${CONTAINER_NAME}" \
   -e PUID=1000 \
   -e PGID=1000 \
   -e TZ=America/Toronto \
@@ -27,12 +53,13 @@ docker run -d \
   -p 3000:3000 \
   -p 3001:3001 \
   -p 2222:22 \
+  -p 8888:8888 \
   -v /opt/webtop/config:/config \
   -v /opt/webtop/home:/home/abc \
   --shm-size=1g \
   --runtime nvidia \
   --gpus all \
   --restart unless-stopped \
-  webtop-persistent:latest
+  "${IMAGE_NAME}"
 
-echo "[start_webtop] Webtop is starting.  Open your browser at http://<device_ip>:3000"
+echo "[start_webtop] Webtop is starting. Open http://<device_ip>:3000  (SSH on port 2222)"

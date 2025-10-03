@@ -1,0 +1,10 @@
+#!/usr/bin/with-contenv bash
+
+# This service starts JupyterLab when the container boots.  It runs as the
+# non‑privileged `abc` user used by the LinuxServer Webtop image and binds to
+# all network interfaces on port 8888 without opening a browser.  The
+# `--notebook-dir` is set to the home directory so that users land in
+# /home/abc when JupyterLab starts.  Because the command runs in the
+# foreground, s6 will supervise it just like the existing openssh service.
+
+exec su abc -c "jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --notebook-dir=/home/abc"
