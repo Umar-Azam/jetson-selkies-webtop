@@ -6,8 +6,10 @@
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-IMAGE_NAME="webtop-persistent:latest"
+IMAGE_NAME="your-webtop:latest"
+BASE_IMAGE="lscr.io/linuxserver/webtop:ubuntu-xfce"
 CONTAINER_NAME="webtop"
+L4T_PYTORCH_TAG="${L4T_PYTORCH_TAG:-r36.4.0}"
 
 have_running_container() {
   docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"
@@ -19,6 +21,11 @@ have_any_container() {
 
 have_image() {
   docker image inspect "${IMAGE_NAME}" >/dev/null 2>&1
+}
+
+detect_base_python_tag() {
+  docker run --rm --entrypoint python3 "${BASE_IMAGE}" \
+    -c 'import sys; print(f"python{sys.version_info.major}.{sys.version_info.minor}")'
 }
 
 echo "[start_webtop] Checking container state..."
@@ -40,7 +47,19 @@ if have_image; then
   echo "[start_webtop] Using existing image ${IMAGE_NAME} (no build needed)."
 else
   echo "[start_webtop] No image found. Building ${IMAGE_NAME}..."
-  docker build -t "${IMAGE_NAME}" "${SCRIPT_DIR}"
+
+  BASE_PYTHON_ABI=""
+  if BASE_PYTHON_ABI=$(detect_base_python_tag 2>/dev/null); then
+    echo "[start_webtop] Base image ${BASE_IMAGE} reports ${BASE_PYTHON_ABI}."
+  else
+    echo "[start_webtop] Warning: unable to detect Python ABI from ${BASE_IMAGE}." >&2
+  fi
+
+  echo "[start_webtop] Building with L4T_PYTORCH_TAG=${L4T_PYTORCH_TAG} (override via env)."
+  docker build \
+    --build-arg "L4T_PYTORCH_TAG=${L4T_PYTORCH_TAG}" \
+    -t "${IMAGE_NAME}" \
+    "${SCRIPT_DIR}"
 fi
 
 echo "[start_webtop] Running new container '${CONTAINER_NAME}'..."
@@ -50,6 +69,8 @@ docker run -d \
   -e PGID=1000 \
   -e TZ=America/Toronto \
   -e SSH_DEFAULT_PASSWORD=changeme \
+  -e NVIDIA_VISIBLE_DEVICES=all \
+  -e NVIDIA_DRIVER_CAPABILITIES=all \
   -p 3000:3000 \
   -p 3001:3001 \
   -p 2222:22 \
